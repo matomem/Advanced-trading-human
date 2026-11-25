@@ -13,7 +13,7 @@ jobs:
           python-version: "3.11"
       - run: pip install pandas numpy scikit-learn xgboost joblib
       - run: python -m compileall -q services
-      - run: cd services/ml && python -m unittest -v
+      - run: cd services/ml && python -m unittest discover -v -p 'test_*.py'
   typescript:
     runs-on: ubuntu-latest
     steps:
