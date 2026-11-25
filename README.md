@@ -13,7 +13,7 @@ Research and decision-support platform for **XAU/USD (gold)** and **USD/JPY**. T
 | Persistent memory | PostgreSQL decision journal, outcome records, searchable strategy observations and performance API | Database provisioning, backup, encryption and migrations |
 | ML | Point-in-time OHLC feature builder, XGBoost and optional PyTorch trainers, authenticated inference-only API | Your historical data, clean labels, walk-forward validation and model deployment |
 | Research | Next-bar illustrative OHLC backtest and parameter sweep with spread/commission/slippage inputs | Tick-quality fills, swaps, contract sizing, margin and walk-forward robustness |
-| Dashboard | Browser dashboard for account, quotes, calendar, sentiment, journal and stored memories | Host it locally/private network and configure CORS |
+| Dashboard | Browser dashboard for account, quotes, calendar, sentiment, journal, stored memories and a manually confirmed demo-only order ticket | Host it locally/private network and configure CORS |
 | Execution safety | Kill switch, demo-account check, symbol allowlist, lot constraints, spread/stops checks, order preflight, daily limits, per-trade risk cap and news blackout | Real broker demo testing and independent security review |
 
 ## Quick start
@@ -66,7 +66,7 @@ cd services/ml && python -m unittest discover -v -p 'test_*.py'
 
 - No credentials or API keys are committed. Do not paste them into GitHub files or chat.
 - The MT5 bridge is a Windows-hosted companion service, not a mobile MT5 plugin.
-- The decision engine is not yet wired end-to-end to the live MT5 feed and ML inference service. The dashboard is monitoring/research UI, not a finished multi-user trading terminal.
+- The decision engine is not yet wired end-to-end to the live MT5 feed and ML inference service. The dashboard has a manual demo-only order ticket; it is not a finished multi-user production terminal and does not support automatic/live orders.
 - The news and sentiment adapters depend on provider access and require validation. The sentiment score is a keyword heuristic, not institutional-grade analysis.
 - ML training scripts do not make a model profitable. Use point-in-time features, walk-forward evaluation, realistic costs and out-of-sample demo testing.
 - Backtesting is an illustrative baseline, not a broker-accurate simulator.
