@@ -16,6 +16,12 @@ input,button,select{background:#0b1220;color:#e5edf8;border:1px solid #344963;bo
 <div class="card"><div class="muted">Mode / kill switch</div><div class="value" id="mode">DEMO · LOCKED</div></div>
 </div>
 <div class="card"><h3>Live market quotes</h3><div id="quotes" class="muted">Not connected</div></div>
+<div class="card"><h3>Trading brain analysis</h3>
+<div class="row"><label>Decision API URL <input id="decision-url" value="http://127.0.0.1:8200" size="25"></label>
+<label>Decision token <input id="decision-token" type="password" placeholder="Separate API token"></label></div>
+<div class="row" style="margin-top:10px"><button id="analyze-gold">Analyze XAU/USD</button><button id="analyze-yen">Analyze USD/JPY</button></div>
+<pre id="decision-output" class="muted" style="white-space:pre-wrap;overflow-wrap:anywhere">Analysis not requested.</pre>
+</div>
 <div class="grid">
 <div class="card"><h3>Performance journal</h3><div class="value" id="performance">—</div><div id="performance-detail" class="muted">No data loaded</div></div>
 <div class="card"><h3>Calendar provider</h3><div class="value" id="calendar">—</div><div class="muted">Provider availability and event coverage must be checked for your API plan.</div></div>
@@ -46,6 +52,16 @@ const scores=await Promise.all(['XAUUSD','USDJPY'].map(async s=>{try{const x=awa
 async function loadJournal(){try{const rows=await get('/journal?limit=30');el('journal').innerHTML=rows.length?rows.map(x=>'<tr><td>'+esc(x.created_at)+'</td><td>'+esc(x.symbol)+'</td><td>'+esc(x.timeframe)+'</td><td>'+esc(x.model_version)+'</td><td>'+esc(x.outcome||'OPEN / UNLABELLED')+'</td><td>'+esc(x.pnl===null?'—':(x.pnl-(x.costs||0)).toFixed(2))+'</td></tr>').join(''):'<tr><td colspan="6">No decisions recorded yet.</td></tr>'}catch(e){el('journal').innerHTML='<tr><td colspan="6">'+esc(e.message)+'</td></tr>'}}
 async function loadMemory(){try{const q=encodeURIComponent(el('memory-query').value.trim());const rows=await get('/memory?limit=30'+(q?'&q='+q:''));el('memories').innerHTML=rows.length?rows.map(x=>'<p><b>'+esc(x.symbol)+' '+esc(x.timeframe)+' · '+esc(x.status)+'</b><br>'+esc(x.observation)+'<br><small class="muted">Confidence '+Number(x.confidence).toFixed(2)+' · '+esc((x.tags||[]).join(', '))+'</small></p>').join(''):'No matching memories.'}catch(e){el('memories').textContent=e.message}}
 async function refresh(){el('health').textContent='Connecting…';try{const h=await fetch(base()+'/health').then(r=>r.json());currentHealth=h;el('send-demo').disabled=!(h.mode==='demo'&&!h.kill_switch);el('health').textContent='Online';el('mode').textContent=h.mode.toUpperCase()+(h.kill_switch?' · LOCKED':'');const a=await get('/account');el('account').textContent=a.login+' · '+a.server;el('equity').textContent=a.currency+' '+Number(a.balance).toFixed(2)+' / '+Number(a.equity).toFixed(2);await Promise.all([loadQuotes(),loadPerformance(),loadNews(),loadJournal(),loadMemory()]);el('status').textContent='Dashboard refreshed. No orders were sent.'}catch(e){el('health').textContent='Offline';el('status').textContent='Connection error: '+e.message}}
+async function runDecision(symbol){
+ const url=el('decision-url').value.replace(/\/$/,'');
+ try{const r=await fetch(url+'/decision/'+symbol,{headers:{'Authorization':'Bearer '+el('decision-token').value}});
+ const data=await r.json();if(!r.ok)throw new Error(JSON.stringify(data));
+ const d=data.decision;el('decision-output').textContent=symbol+' · '+d.direction+' · '+d.setup+' · score '+d.score+
+   '\\nEntry: '+d.entry+' | SL: '+d.stopLoss+' | TP: '+d.takeProfit+
+   '\\nReasons: '+d.reasons.join(' ')+'\\nWarnings: '+d.warnings.join(' ')+
+   '\\nJournal ID: '+data.journalId+' | Execution: '+data.execution;
+ }catch(e){el('decision-output').textContent='Analysis unavailable: '+e.message}
+}
 async function sendDemoOrder(){
  if(!currentHealth||currentHealth.mode!=='demo'||currentHealth.kill_switch){el('order-result').textContent='Demo mode is not armed; check bridge configuration.';return}
  if(!el('demo-confirm').checked){el('order-result').textContent='Confirm the demo order checkbox first.';return}
@@ -60,6 +76,8 @@ async function sendDemoOrder(){
  finally{el('send-demo').disabled=!(currentHealth&&currentHealth.mode==='demo'&&!currentHealth.kill_switch)}
 }
 el('send-demo').addEventListener('click',sendDemoOrder);
+el('analyze-gold').addEventListener('click',()=>runDecision('XAUUSD'));
+el('analyze-yen').addEventListener('click',()=>runDecision('USDJPY'));
 el('refresh').addEventListener('click',refresh);el('search-memory').addEventListener('click',loadMemory);
 el('learn-memory').addEventListener('click',async()=>{try{const r=await fetch(base()+'/memory/learn?limit=1000',{method:'POST',headers:headers()});const data=await r.json();if(!r.ok)throw new Error(JSON.stringify(data));el('memories').textContent='Reviewed '+data.groups_reviewed+' groups; created '+data.new_memories_created+' unverified notes.';await loadMemory()}catch(e){el('memories').textContent='Learning review failed: '+e.message}});
 </script></body></html>
