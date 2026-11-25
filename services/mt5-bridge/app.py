@@ -85,6 +85,8 @@ async def order(req: OrderRequest, authorization: str | None = Header(default=No
     auth(authorization)
     # Live execution is intentionally locked behind multiple explicit operator settings.
     if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON")
+    if MODE == "demo" and req.operator_confirmation != "I_CONFIRM_DEMO_ORDER":
+        raise HTTPException(403,"Per-order demo confirmation required")
     if MODE != "demo":
         if os.getenv("ALLOW_LIVE_TRADING") != "true" or os.getenv("LIVE_CONFIRMATION") != "I_ACCEPT_LIVE_TRADING_RISK":
             raise HTTPException(403,"Live trading is not armed")
@@ -299,3 +301,36 @@ def calendar_health(authorization: str | None=Header(default=None)):
     auth(authorization)
     return {"provider":"Finnhub","configured":bool(os.getenv("FINNHUB_API_KEY")),
             "note":"Coverage and event-impact semantics depend on provider plan; verify before use."}
+
+@app.post("/memory/learn")
+def learn_from_outcomes(limit: int=1000, authorization: str | None=Header(default=None)):
+    """Summarize observed closed trades into unverified memory notes; never changes model weights or places orders."""
+    auth(authorization)
+    if not 20 <= limit <= 5000: raise HTTPException(400,"limit must be 20..5000")
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT d.symbol,d.timeframe,
+                           COALESCE(d.decision->>'strategy',d.decision->>'setup','unspecified') AS strategy,
+                           COUNT(*) AS n,
+                           COUNT(*) FILTER(WHERE o.pnl-o.costs>0) AS wins,
+                           COALESCE(SUM(o.pnl-o.costs),0) AS net
+                           FROM trade_outcomes o JOIN trade_decisions d ON d.id=o.decision_id
+                           GROUP BY d.symbol,d.timeframe,strategy
+                           ORDER BY n DESC LIMIT %s""",(limit,))
+            groups=cur.fetchall()
+            created=[]
+            for symbol,timeframe,strategy,n,wins,net in groups:
+                win_rate=float(wins)/int(n) if n else 0
+                observation=(f"Observed {int(n)} closed trades for strategy '{strategy}' on {symbol} {timeframe}: "
+                             f"win rate {win_rate:.1%}, net P/L after recorded costs {float(net):.4f}. "
+                             "This is descriptive historical evidence, not a predictive rule.")
+                evidence={"sample_size":int(n),"wins":int(wins),"win_rate":win_rate,"net_pnl_after_costs":float(net)}
+                cur.execute("""INSERT INTO strategy_memories(symbol,timeframe,category,observation,tags,evidence,confidence,status)
+                               SELECT %s,%s,'OUTCOME_REVIEW',%s,ARRAY['journal','outcomes',%s],%s,%s,'UNVERIFIED'
+                               WHERE NOT EXISTS (SELECT 1 FROM strategy_memories WHERE symbol=%s AND timeframe=%s AND category='OUTCOME_REVIEW' AND observation=%s)
+                               RETURNING id""",
+                            (symbol,timeframe,observation,strategy,json.dumps(evidence),min(0.95,int(n)/(int(n)+20)),symbol,timeframe,observation))
+                row=cur.fetchone()
+                if row: created.append(row[0])
+    return {"groups_reviewed":len(groups),"new_memories_created":len(created),"memory_ids":created,
+            "status":"UNVERIFIED","note":"Outcome summaries are descriptive only and do not update model weights or authorize trades."}
