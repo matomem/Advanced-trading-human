@@ -81,7 +81,7 @@ class OrderRequest(BaseModel):
     operator_confirmation: str = ""
 
 @app.post("/orders")
-def order(req: OrderRequest, authorization: str | None = Header(default=None)):
+async def order(req: OrderRequest, authorization: str | None = Header(default=None)):
     auth(authorization)
     # Live execution is intentionally locked behind multiple explicit operator settings.
     if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON")
@@ -90,6 +90,23 @@ def order(req: OrderRequest, authorization: str | None = Header(default=None)):
             raise HTTPException(403,"Live trading is not armed")
         if req.operator_confirmation != "I_CONFIRM_THIS_LIVE_ORDER":
             raise HTTPException(403,"Per-order live confirmation required")
+    # Fail closed around scheduled high-impact events when news protection is required.
+    if os.getenv("REQUIRE_NEWS_PROVIDER","true").lower() != "false":
+        if not os.getenv("FINNHUB_API_KEY"): raise HTTPException(503,"News blackout protection requires FINNHUB_API_KEY")
+        from_ts=int(time.time())-int(os.getenv("NEWS_BLACKOUT_MINUTES","30"))*60
+        to_ts=int(time.time())+int(os.getenv("NEWS_BLACKOUT_MINUTES","30"))*60
+        try: events=await economic_news(from_ts,to_ts)
+        except Exception as e: raise HTTPException(503,f"Unable to verify news blackout; refusing order ({type(e).__name__})")
+        relevant={"USD","JPY"} if "JPY" in req.symbol.upper() else {"USD"}
+        for event in events:
+            if event.get("impact") != "HIGH" or event.get("currency") not in relevant: continue
+            raw=event.get("scheduledAt")
+            try:
+                event_time=datetime.fromisoformat(str(raw).replace("Z","+00:00"))
+                if event_time.tzinfo is None: event_time=event_time.replace(tzinfo=timezone.utc)
+            except (TypeError,ValueError): continue
+            if abs((event_time-datetime.now(timezone.utc)).total_seconds()) <= int(os.getenv("NEWS_BLACKOUT_MINUTES","30"))*60:
+                raise HTTPException(423,{"message":"High-impact news blackout active","event":event.get("title"),"currency":event.get("currency")})
     info=connect()
     try:
         if MODE == "demo" and info.trade_mode != mt5.ACCOUNT_TRADE_MODE_DEMO:
