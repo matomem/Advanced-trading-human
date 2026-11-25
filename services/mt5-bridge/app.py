@@ -81,7 +81,7 @@ class OrderRequest(BaseModel):
     operator_confirmation: str = ""
 
 @app.post("/orders")
-async def order(req: OrderRequest, authorization: str | None = Header(default=None)):
+async async def order(req: OrderRequest, authorization: str | None = Header(default=None)):
     auth(authorization)
     # Live execution is intentionally locked behind multiple explicit operator settings.
     if KILL_SWITCH: raise HTTPException(423,"Kill switch is ON")
