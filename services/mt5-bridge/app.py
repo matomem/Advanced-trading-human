@@ -67,7 +67,7 @@ def candles(symbol: str, timeframe: str="M5", count: int=500, authorization: str
     if timeframe not in frames: mt5.shutdown(); raise HTTPException(400,"Unsupported timeframe")
     try:
         if not mt5.symbol_select(symbol, True): raise HTTPException(404,"Symbol unavailable")
-        rates=mt5.copy_rates_from_pos(symbol,frames[timeframe],0,min(max(count,1),5000))
+        rates=mt5.copy_rates_from_pos(symbol,frames[timeframe],1,min(max(count,1),5000))
         if rates is None: raise HTTPException(502,f"MT5 rates error: {mt5.last_error()}")
         return [{"time":int(r["time"])*1000,"open":float(r["open"]),"high":float(r["high"]),"low":float(r["low"]),"close":float(r["close"]),"volume":int(r["tick_volume"])} for r in rates]
     finally: mt5.shutdown()
