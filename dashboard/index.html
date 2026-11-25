@@ -33,7 +33,7 @@ input,button,select{background:#0b1220;color:#e5edf8;border:1px solid #344963;bo
 <label><input type="checkbox" id="demo-confirm"> I confirm this manual demo order.</label>
 <div class="row" style="margin-top:10px"><button id="send-demo" disabled>Send demo order</button><span id="order-result" class="muted">Connect and verify demo mode first.</span></div>
 </div>
-<div class="card"><h3>Strategy memory</h3><div class="row"><input id="memory-query" placeholder="Search stored observations"><button id="search-memory">Search</button></div><div id="memories" class="muted" style="margin-top:12px">No memory loaded.</div></div>
+<div class="card"><h3>Strategy memory</h3><div class="row"><input id="memory-query" placeholder="Search stored observations"><button id="search-memory">Search</button><button id="learn-memory">Review closed trades</button></div><div id="memories" class="muted" style="margin-top:12px">No memory loaded.</div></div>
 <p id="status">Read-only dashboard. It does not place or modify orders. The execution endpoint is separately protected and defaults to kill-switch ON.</p>
 <script>
 let currentHealth=null; const el=id=>document.getElementById(id), base=()=>el('url').value.replace(/\/$/,''), headers=()=>({'Authorization':'Bearer '+el('token').value});
@@ -61,4 +61,5 @@ async function sendDemoOrder(){
 }
 el('send-demo').addEventListener('click',sendDemoOrder);
 el('refresh').addEventListener('click',refresh);el('search-memory').addEventListener('click',loadMemory);
+el('learn-memory').addEventListener('click',async()=>{try{const r=await fetch(base()+'/memory/learn?limit=1000',{method:'POST',headers:headers()});const data=await r.json();if(!r.ok)throw new Error(JSON.stringify(data));el('memories').textContent='Reviewed '+data.groups_reviewed+' groups; created '+data.new_memories_created+' unverified notes.';await loadMemory()}catch(e){el('memories').textContent='Learning review failed: '+e.message}});
 </script></body></html>
