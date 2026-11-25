@@ -203,3 +203,63 @@ def journal(limit: int=100, authorization: str | None = Header(default=None)):
     return [{"id":r[0],"created_at":r[1].isoformat(),"symbol":r[2],"timeframe":r[3],"decision":r[4],
              "model_version":r[5],"outcome":r[6],"pnl":float(r[7]) if r[7] is not None else None,
              "costs":float(r[8]) if r[8] is not None else None,"closed_at":r[9].isoformat() if r[9] else None} for r in rows]
+
+class MemoryInput(BaseModel):
+    symbol: str
+    timeframe: str
+    category: str
+    observation: str = Field(min_length=5,max_length=4000)
+    tags: list[str] = Field(default_factory=list,max_length=30)
+    evidence: dict = Field(default_factory=dict)
+    confidence: float = Field(default=0.0,ge=0,le=1)
+
+@app.post("/memory")
+def add_memory(item: MemoryInput, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    import json
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""INSERT INTO strategy_memories(symbol,timeframe,category,observation,tags,evidence,confidence)
+                           VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+                        (item.symbol,item.timeframe,item.category,item.observation,item.tags,json.dumps(item.evidence),item.confidence))
+            memory_id=cur.fetchone()[0]
+    return {"id":memory_id,"status":"UNVERIFIED"}
+
+@app.get("/memory")
+def search_memory(symbol: str | None=None, timeframe: str | None=None, q: str | None=None,
+                  limit: int=50, authorization: str | None=Header(default=None)):
+    auth(authorization)
+    if not 1 <= limit <= 200: raise HTTPException(400,"limit must be 1..200")
+    clauses=[]; params=[]
+    if symbol: clauses.append("symbol=%s"); params.append(symbol)
+    if timeframe: clauses.append("timeframe=%s"); params.append(timeframe)
+    if q: clauses.append("observation ILIKE %s"); params.append("%"+q[:100]+"%")
+    where=("WHERE "+" AND ".join(clauses)) if clauses else ""
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""SELECT id,created_at,symbol,timeframe,category,observation,tags,evidence,confidence,status
+                            FROM strategy_memories {where} ORDER BY created_at DESC LIMIT %s""",(*params,limit))
+            rows=cur.fetchall()
+    return [{"id":r[0],"created_at":r[1].isoformat(),"symbol":r[2],"timeframe":r[3],"category":r[4],
+             "observation":r[5],"tags":r[6],"evidence":r[7],"confidence":float(r[8]),"status":r[9]} for r in rows]
+
+@app.get("/performance")
+def performance(authorization: str | None=Header(default=None)):
+    auth(authorization)
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT COUNT(*), COUNT(*) FILTER(WHERE outcome='WIN'),
+                           COUNT(*) FILTER(WHERE outcome='LOSS'),
+                           COALESCE(SUM(pnl-costs),0), COALESCE(AVG(pnl-costs),0)
+                           FROM trade_outcomes""")
+            count,wins,losses,net,avg=cur.fetchone()
+    closed=int(count or 0)
+    return {"closed_trades":closed,"wins":int(wins or 0),"losses":int(losses or 0),
+            "win_rate":float(wins or 0)/closed if closed else 0,"net_pnl_after_costs":float(net),
+            "average_net_pnl":float(avg)}
+
+@app.get("/calendar/health")
+def calendar_health(authorization: str | None=Header(default=None)):
+    auth(authorization)
+    return {"provider":"Finnhub","configured":bool(os.getenv("FINNHUB_API_KEY")),
+            "note":"Coverage and event-impact semantics depend on provider plan; verify before use."}
