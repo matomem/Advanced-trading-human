@@ -18,7 +18,7 @@ class TradingMLP(nn.Module):
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--csv",required=True); p.add_argument("--target",default="target")
     p.add_argument("--out",default="artifacts/torch-model.pt"); p.add_argument("--epochs",type=int,default=30)
-    a=p.parse_args(); df=pd.read_csv(a.csv).dropna()
+    a=p.parse_args(); df=pd.read_csv(a.csv).dropna(); df=df.sort_values("timestamp") if "timestamp" in df.columns else df
     if a.target not in df: raise SystemExit("Target column missing")
     y=df.pop(a.target).astype("float32").to_numpy()
     features=df.drop(columns=["timestamp"],errors="ignore"); x=features.astype("float32").to_numpy()
