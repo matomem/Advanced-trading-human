@@ -54,7 +54,7 @@ async function checkNews(instrument:Instrument,now:number):Promise<{blocked:bool
     for(const event of events){
       if(event.impact!=="HIGH" || !currencies.has(event.currency)) continue;
       const raw=String(event.scheduledAt??"");
-      const normalized=/([zZ]|[+-]\\d{2}:?\\d{2})$/.test(raw)?raw:raw.replace(" ","T")+"Z";
+      const normalized=/([zZ]|[+-]\d{2}:?\d{2})$/.test(raw)?raw:raw.replace(" ","T")+"Z";
       const ts=Date.parse(normalized);
       if(!Number.isFinite(ts)) return {blocked:true,warning:"A relevant high-impact event has an unreadable timestamp; analysis is blocked."};
       if(Math.abs(ts-now)<=windowMs) return {blocked:true,warning:"High-impact event blackout: "+event.title};
