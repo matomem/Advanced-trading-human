@@ -6,7 +6,7 @@ Research and decision-support platform for **XAU/USD (gold)** and **USD/JPY**. T
 
 | Module | What is present | What still needs external setup |
 |---|---|---|
-| Decision engine | EMA/RSI/ATR, trend-pullback and breakout scoring, candle patterns, liquidity sweeps, risk/session/spread gates | Live XM demo data is connected through the decision API; verify broker-specific data and sessions |
+| Decision engine | EMA/RSI/ATR, trend-pullback and breakout scoring, candle patterns, liquidity sweeps, risk/session/spread gates | MT5-connected analysis API reads broker candles and quotes once configured; verify broker-specific data and sessions |
 | MT5 / XM | Authenticated FastAPI bridge for account, ticks, OHLC candles and guarded demo-first order route | Windows host, MT5 terminal, XM demo login/server and exact broker symbol names |
 | News | Finnhub economic-calendar adapter and high-impact event blackout in order route | FINNHUB_API_KEY, provider plan/coverage validation |
 | Sentiment | Finnhub forex headlines with transparent keyword heuristic | A licensed, validated sentiment source and robust NLP model |
@@ -50,7 +50,7 @@ python features.py --csv data/xauusd_m5.csv --out data/features.csv --horizon 5
 python train_xgboost.py --csv data/features.csv --target target
 ```
 
-The optional PyTorch baseline uses `requirements-torch.txt`. The inference API in `serve.py` returns model probabilities only and has no order-execution capability. Run it from services/ml with `uvicorn serve:app --host 127.0.0.1 --port 8100` after setting ML_API_TOKEN and XGB_MODEL_PATH. Protect it with a separate ML_API_TOKEN and keep it on a private network.
+The optional PyTorch baseline uses `requirements-torch.txt`. The inference API in `serve.py` returns model probabilities only and has no order-execution capability. Copy `.env.example` to `.env`, set ML_API_TOKEN and XGB_MODEL_PATH, then from services/ml run `uvicorn serve:app --host 127.0.0.1 --port 8100 --env-file .env`. Protect it with a separate ML_API_TOKEN and keep it on a private network.
 
 ### 6. Decision API
 
