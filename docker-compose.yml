@@ -6,6 +6,6 @@ services:
       POSTGRES_USER: trader
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     ports: ["127.0.0.1:5432:5432"]
-    volumes: ["trader-db:/var/lib/postgresql/data","./services/mt5-bridge/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro"]
+    volumes: ["trader-db:/var/lib/postgresql/data","./services/mt5-bridge/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro","./services/mt5-bridge/memory.sql:/docker-entrypoint-initdb.d/002-memory.sql:ro"]
 volumes:
   trader-db:
