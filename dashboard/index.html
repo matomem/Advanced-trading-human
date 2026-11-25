@@ -23,10 +23,20 @@ input,button,select{background:#0b1220;color:#e5edf8;border:1px solid #344963;bo
 </div>
 <div class="card"><h3>Economic calendar (next 7 days)</h3><div class="scroll"><table><thead><tr><th>Time</th><th>Currency</th><th>Event</th><th>Impact</th><th>Actual / Forecast</th></tr></thead><tbody id="events"><tr><td colspan="5">Connect to load events.</td></tr></tbody></table></div></div>
 <div class="card"><h3>Recent decisions and outcomes</h3><div class="scroll"><table><thead><tr><th>Created</th><th>Symbol</th><th>Timeframe</th><th>Model</th><th>Outcome</th><th>Net P/L</th></tr></thead><tbody id="journal"><tr><td colspan="6">Connect to load journal.</td></tr></tbody></table></div></div>
+<div class="card"><h3>Manual demo order ticket</h3>
+<div class="row"><label>Broker symbol <input id="order-symbol" value="XAUUSD" size="12"></label>
+<label>Side <select id="order-side"><option>BUY</option><option>SELL</option></select></label>
+<label>Volume (lots) <input id="order-volume" type="number" min="0.01" step="0.01" value="0.01"></label>
+<label>Stop loss <input id="order-sl" type="number" step="any" placeholder="Price"></label>
+<label>Take profit <input id="order-tp" type="number" step="any" placeholder="Price"></label></div>
+<p class="muted">Demo account only. The bridge must be configured with TRADING_MODE=demo and KILL_SWITCH=false. News blackout, spread, risk, volume and broker checks remain active.</p>
+<label><input type="checkbox" id="demo-confirm"> I confirm this manual demo order.</label>
+<div class="row" style="margin-top:10px"><button id="send-demo" disabled>Send demo order</button><span id="order-result" class="muted">Connect and verify demo mode first.</span></div>
+</div>
 <div class="card"><h3>Strategy memory</h3><div class="row"><input id="memory-query" placeholder="Search stored observations"><button id="search-memory">Search</button></div><div id="memories" class="muted" style="margin-top:12px">No memory loaded.</div></div>
 <p id="status">Read-only dashboard. It does not place or modify orders. The execution endpoint is separately protected and defaults to kill-switch ON.</p>
 <script>
-const el=id=>document.getElementById(id), base=()=>el('url').value.replace(/\/$/,''), headers=()=>({'Authorization':'Bearer '+el('token').value});
+let currentHealth=null; const el=id=>document.getElementById(id), base=()=>el('url').value.replace(/\/$/,''), headers=()=>({'Authorization':'Bearer '+el('token').value});
 async function get(path){const r=await fetch(base()+path,{headers:headers()});if(!r.ok)throw new Error(await r.text());return r.json()}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function loadQuotes(){const syms=['XAUUSD','USDJPY'];const rows=await Promise.all(syms.map(async s=>{try{const q=await get('/symbols/'+s+'/tick');return s+' · Bid '+q.bid+' · Ask '+q.ask}catch(e){return s+' · unavailable (check XM symbol suffix)'}}));el('quotes').textContent=rows.join(' | ')}
@@ -35,6 +45,20 @@ async function loadNews(){const now=Math.floor(Date.now()/1000);try{const h=awai
 const scores=await Promise.all(['XAUUSD','USDJPY'].map(async s=>{try{const x=await get('/sentiment/'+s);return s+': '+Number(x.score).toFixed(2)+' ('+x.articleCount+' headlines; '+x.method+')'}catch(e){return s+': unavailable'}}));el('sentiment').textContent=scores.join(' · ')}
 async function loadJournal(){try{const rows=await get('/journal?limit=30');el('journal').innerHTML=rows.length?rows.map(x=>'<tr><td>'+esc(x.created_at)+'</td><td>'+esc(x.symbol)+'</td><td>'+esc(x.timeframe)+'</td><td>'+esc(x.model_version)+'</td><td>'+esc(x.outcome||'OPEN / UNLABELLED')+'</td><td>'+esc(x.pnl===null?'—':(x.pnl-(x.costs||0)).toFixed(2))+'</td></tr>').join(''):'<tr><td colspan="6">No decisions recorded yet.</td></tr>'}catch(e){el('journal').innerHTML='<tr><td colspan="6">'+esc(e.message)+'</td></tr>'}}
 async function loadMemory(){try{const q=encodeURIComponent(el('memory-query').value.trim());const rows=await get('/memory?limit=30'+(q?'&q='+q:''));el('memories').innerHTML=rows.length?rows.map(x=>'<p><b>'+esc(x.symbol)+' '+esc(x.timeframe)+' · '+esc(x.status)+'</b><br>'+esc(x.observation)+'<br><small class="muted">Confidence '+Number(x.confidence).toFixed(2)+' · '+esc((x.tags||[]).join(', '))+'</small></p>').join(''):'No matching memories.'}catch(e){el('memories').textContent=e.message}}
-async function refresh(){el('health').textContent='Connecting…';try{const h=await fetch(base()+'/health').then(r=>r.json());el('health').textContent='Online';el('mode').textContent=h.mode.toUpperCase()+(h.kill_switch?' · LOCKED':'');const a=await get('/account');el('account').textContent=a.login+' · '+a.server;el('equity').textContent=a.currency+' '+Number(a.balance).toFixed(2)+' / '+Number(a.equity).toFixed(2);await Promise.all([loadQuotes(),loadPerformance(),loadNews(),loadJournal(),loadMemory()]);el('status').textContent='Dashboard refreshed. No orders were sent.'}catch(e){el('health').textContent='Offline';el('status').textContent='Connection error: '+e.message}}
+async function refresh(){el('health').textContent='Connecting…';try{const h=await fetch(base()+'/health').then(r=>r.json());currentHealth=h;el('send-demo').disabled=!(h.mode==='demo'&&!h.kill_switch);el('health').textContent='Online';el('mode').textContent=h.mode.toUpperCase()+(h.kill_switch?' · LOCKED':'');const a=await get('/account');el('account').textContent=a.login+' · '+a.server;el('equity').textContent=a.currency+' '+Number(a.balance).toFixed(2)+' / '+Number(a.equity).toFixed(2);await Promise.all([loadQuotes(),loadPerformance(),loadNews(),loadJournal(),loadMemory()]);el('status').textContent='Dashboard refreshed. No orders were sent.'}catch(e){el('health').textContent='Offline';el('status').textContent='Connection error: '+e.message}}
+async function sendDemoOrder(){
+ if(!currentHealth||currentHealth.mode!=='demo'||currentHealth.kill_switch){el('order-result').textContent='Demo mode is not armed; check bridge configuration.';return}
+ if(!el('demo-confirm').checked){el('order-result').textContent='Confirm the demo order checkbox first.';return}
+ const body={symbol:el('order-symbol').value.trim(),side:el('order-side').value,
+   volume:Number(el('order-volume').value),stop_loss:Number(el('order-sl').value),
+   take_profit:Number(el('order-tp').value),operator_confirmation:'I_CONFIRM_DEMO_ORDER'};
+ el('send-demo').disabled=true;el('order-result').textContent='Submitting to demo account…';
+ try{const r=await fetch(base()+'/orders',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const result=await r.json();if(!r.ok)throw new Error(JSON.stringify(result));
+ el('order-result').textContent='Demo order accepted. Ticket '+result.ticket+' · '+result.status;el('demo-confirm').checked=false;
+ }catch(e){el('order-result').textContent='Order rejected: '+e.message}
+ finally{el('send-demo').disabled=!(currentHealth&&currentHealth.mode==='demo'&&!currentHealth.kill_switch)}
+}
+el('send-demo').addEventListener('click',sendDemoOrder);
 el('refresh').addEventListener('click',refresh);el('search-memory').addEventListener('click',loadMemory);
 </script></body></html>
