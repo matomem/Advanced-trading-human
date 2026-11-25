@@ -133,15 +133,23 @@ async def order(req: OrderRequest, authorization: str | None = Header(default=No
         min_stop_distance=float(spec.trade_stops_level)*spec.point
         if min_stop_distance and (abs(price-req.stop_loss)<min_stop_distance or abs(req.take_profit-price)<min_stop_distance):
             raise HTTPException(400,"Stop-loss/take-profit is inside broker minimum stop distance")
-        if mt5.positions_total() >= int(os.getenv("MAX_OPEN_POSITIONS","3")):
+        positions=mt5.positions_get()
+        if positions is None: raise HTTPException(503,"Unable to verify open positions; refusing order")
+        if len(positions) >= int(os.getenv("MAX_OPEN_POSITIONS","3")):
             raise HTTPException(423,"Maximum open-position count reached")
+        existing_open_risk=0.0
+        for position in positions:
+            if not position.sl: raise HTTPException(423,"An existing position has no stop-loss; refusing additional risk")
+            position_risk=mt5.order_calc_profit(position.type,position.symbol,position.volume,position.price_current,position.sl)
+            if position_risk is None: raise HTTPException(503,"Unable to calculate existing position risk")
+            existing_open_risk += abs(float(position_risk))
         if (buy and not req.stop_loss < price < req.take_profit) or (not buy and not req.take_profit < price < req.stop_loss):
             raise HTTPException(400,"Invalid stop-loss/take-profit direction")
         # Broker-side pre-trade controls: realized daily loss, daily order count and stop-risk cap.
         now=datetime.now(timezone.utc); day_start=now.replace(hour=0,minute=0,second=0,microsecond=0)
         deals=mt5.history_deals_get(day_start,now)
         if deals is None: raise HTTPException(503,"Unable to verify daily deal history; refusing order")
-        daily_pnl=sum(float(d.profit+d.swap+d.commission) for d in deals)
+        daily_pnl=sum(float(d.profit+d.swap+d.commission) for d in deals)+sum(float(p.profit+p.swap) for p in positions)
         max_daily_pct=float(os.getenv("MAX_DAILY_LOSS_PCT","1.0"))
         if daily_pnl <= -(float(info.balance)*max_daily_pct/100):
             raise HTTPException(423,"Daily loss limit reached; execution blocked")
@@ -153,6 +161,12 @@ async def order(req: OrderRequest, authorization: str | None = Header(default=No
         risk_limit=float(info.equity)*float(os.getenv("MAX_RISK_PER_TRADE_PCT","0.25"))/100
         if estimated_loss is None or abs(float(estimated_loss)) > risk_limit:
             raise HTTPException(400,{"message":"Trade exceeds configured risk-per-trade cap","estimated_loss":estimated_loss,"risk_limit":risk_limit})
+        if info.equity <= 0: raise HTTPException(503,"Invalid account equity")
+        aggregate_limit=float(info.equity)*float(os.getenv("MAX_OPEN_RISK_PCT","1.0"))/100
+        if existing_open_risk+abs(float(estimated_loss)) > aggregate_limit:
+            raise HTTPException(423,{"message":"Aggregate open-risk limit would be exceeded",
+                                     "existing_risk":existing_open_risk,"new_risk":abs(float(estimated_loss)),
+                                     "limit":aggregate_limit})
         request={"action":mt5.TRADE_ACTION_DEAL,"symbol":req.symbol,"volume":req.volume,
                  "type":order_type,"price":price,"sl":req.stop_loss,"tp":req.take_profit,
                  "deviation":20,"magic":26001,"comment":"HumanTrader guarded order",
