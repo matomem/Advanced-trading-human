@@ -100,12 +100,28 @@ def order(req: OrderRequest, authorization: str | None = Header(default=None)):
         if not mt5.symbol_select(req.symbol,True): raise HTTPException(404,"Symbol unavailable")
         tick=mt5.symbol_info_tick(req.symbol); spec=mt5.symbol_info(req.symbol)
         if tick is None or spec is None: raise HTTPException(502,"No quote/specification")
+        allowed={s.strip().upper() for s in os.getenv("ALLOWED_SYMBOLS","XAUUSD,USDJPY").split(",") if s.strip()}
+        if req.symbol.upper() not in allowed: raise HTTPException(403,"Symbol is not in ALLOWED_SYMBOLS")
+        if req.volume < spec.volume_min or req.volume > spec.volume_max:
+            raise HTTPException(400,"Volume outside broker symbol limits")
+        step=float(spec.volume_step or 0)
+        if step <= 0 or abs(round(req.volume/step)*step-req.volume) > 1e-8:
+            raise HTTPException(400,"Volume does not match broker lot step")
         buy=req.side=="BUY"; price=tick.ask if buy else tick.bid
+        spread_points=(tick.ask-tick.bid)/spec.point
+        if spread_points > float(os.getenv("MAX_SPREAD_POINTS","1000")):
+            raise HTTPException(423,"Spread exceeds configured maximum")
+        min_stop_distance=float(spec.trade_stops_level)*spec.point
+        if min_stop_distance and (abs(price-req.stop_loss)<min_stop_distance or abs(req.take_profit-price)<min_stop_distance):
+            raise HTTPException(400,"Stop-loss/take-profit is inside broker minimum stop distance")
+        if mt5.positions_total() >= int(os.getenv("MAX_OPEN_POSITIONS","3")):
+            raise HTTPException(423,"Maximum open-position count reached")
         if (buy and not req.stop_loss < price < req.take_profit) or (not buy and not req.take_profit < price < req.stop_loss):
             raise HTTPException(400,"Invalid stop-loss/take-profit direction")
         # Broker-side pre-trade controls: realized daily loss, daily order count and stop-risk cap.
         now=datetime.now(timezone.utc); day_start=now.replace(hour=0,minute=0,second=0,microsecond=0)
-        deals=mt5.history_deals_get(day_start,now) or []
+        deals=mt5.history_deals_get(day_start,now)
+        if deals is None: raise HTTPException(503,"Unable to verify daily deal history; refusing order")
         daily_pnl=sum(float(d.profit+d.swap+d.commission) for d in deals)
         max_daily_pct=float(os.getenv("MAX_DAILY_LOSS_PCT","1.0"))
         if daily_pnl <= -(float(info.balance)*max_daily_pct/100):
@@ -122,6 +138,9 @@ def order(req: OrderRequest, authorization: str | None = Header(default=None)):
                  "type":order_type,"price":price,"sl":req.stop_loss,"tp":req.take_profit,
                  "deviation":20,"magic":26001,"comment":"HumanTrader guarded order",
                  "type_time":mt5.ORDER_TIME_GTC,"type_filling":spec.filling_mode}
+        check=mt5.order_check(request)
+        if check is None or check.retcode not in (0,mt5.TRADE_RETCODE_DONE):
+            raise HTTPException(400,{"message":"Broker order_check rejected request","retcode":getattr(check,"retcode",None),"comment":getattr(check,"comment",None)})
         result=mt5.order_send(request)
         if result is None: raise HTTPException(502,f"MT5 order_send failed: {mt5.last_error()}")
         if result.retcode != mt5.TRADE_RETCODE_DONE:
