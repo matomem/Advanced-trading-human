@@ -334,3 +334,29 @@ def learn_from_outcomes(limit: int=1000, authorization: str | None=Header(defaul
                 if row: created.append(row[0])
     return {"groups_reviewed":len(groups),"new_memories_created":len(created),"memory_ids":created,
             "status":"UNVERIFIED","note":"Outcome summaries are descriptive only and do not update model weights or authorize trades."}
+
+@app.get("/risk")
+def risk(authorization: str | None=Header(default=None)):
+    auth(authorization); info=connect()
+    try:
+        now=datetime.now(timezone.utc); day_start=now.replace(hour=0,minute=0,second=0,microsecond=0)
+        deals=mt5.history_deals_get(day_start,now)
+        positions=mt5.positions_get()
+        if deals is None or positions is None:
+            raise HTTPException(503,"Unable to verify account risk history; refusing risk snapshot")
+        realized=sum(float(d.profit+d.swap+d.commission) for d in deals)
+        floating=sum(float(p.profit+p.swap) for p in positions)
+        open_risk=0.0; risk_unknown=False
+        for p in positions:
+            if not p.sl:
+                risk_unknown=True; continue
+            amount=mt5.order_calc_profit(p.type,p.symbol,p.volume,p.price_current,p.sl)
+            if amount is None: risk_unknown=True
+            else: open_risk += abs(float(amount))
+        equity=float(info.equity or 0)
+        open_risk_pct=(100.0 if risk_unknown or equity<=0 else open_risk/equity*100)
+        return {"daily_pnl":realized+floating,"realized_daily_pnl":realized,"floating_pnl":floating,
+                "open_positions":len(positions),"open_risk_amount":open_risk,
+                "open_risk_pct":open_risk_pct,"risk_unknown":risk_unknown,
+                "daily_loss_limit_pct":float(os.getenv("MAX_DAILY_LOSS_PCT","1.0"))}
+    finally: mt5.shutdown()
