@@ -50,7 +50,7 @@ python features.py --csv data/xauusd_m5.csv --out data/features.csv --horizon 5
 python train_xgboost.py --csv data/features.csv --target target
 ```
 
-The optional PyTorch baseline uses `requirements-torch.txt`. The inference API in `serve.py` returns model probabilities only and has no order-execution capability. Protect it with a separate ML_API_TOKEN and keep it on a private network.
+The optional PyTorch baseline uses `requirements-torch.txt`. The inference API in `serve.py` returns model probabilities only and has no order-execution capability. Run it from services/ml with `uvicorn serve:app --host 127.0.0.1 --port 8100` after setting ML_API_TOKEN and XGB_MODEL_PATH. Protect it with a separate ML_API_TOKEN and keep it on a private network.
 
 ### 6. Checks
 
