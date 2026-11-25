@@ -43,7 +43,7 @@ Feed normalized candles (oldest first) for each timeframe, current bid/ask, acco
 A separate platform layer now lives alongside the TypeScript decision engine:
 
 - `services/mt5-bridge`: authenticated FastAPI bridge for MT5 account, quotes and OHLC data; optional Finnhub economic calendar/headline sentiment; PostgreSQL-backed decision/outcome journal endpoints; demo-first order route with kill switch, account-mode check, daily loss/order limits and per-trade stop-risk cap.
-- `services/ml`: chronological XGBoost training baseline with saved feature schema. PyTorch is deliberately deferred until clean labelled data and a validated baseline exist.
+- `services/ml`: chronological XGBoost training baseline with saved feature schema. An optional PyTorch MLP baseline is included separately; compare it against XGBoost and simple baselines before any deployment.
 - `services/mt5-bridge/backtest.py`: next-bar moving-average baseline, explicit spread/commission/slippage assumptions and parameter sweep.
 - `dashboard/index.html`: read-only browser monitor for bridge status, account and quotes.
 - `services/mt5-bridge/schema.sql`: PostgreSQL journal schema.
