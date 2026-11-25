@@ -106,7 +106,7 @@ async def order(req: OrderRequest, authorization: str | None = Header(default=No
             try:
                 event_time=datetime.fromisoformat(str(raw).replace("Z","+00:00"))
                 if event_time.tzinfo is None: event_time=event_time.replace(tzinfo=timezone.utc)
-            except (TypeError,ValueError): continue
+            except (TypeError,ValueError): raise HTTPException(503,"High-impact event timestamp could not be verified; refusing order")
             if abs((event_time-datetime.now(timezone.utc)).total_seconds()) <= int(os.getenv("NEWS_BLACKOUT_MINUTES","30"))*60:
                 raise HTTPException(423,{"message":"High-impact news blackout active","event":event.get("title"),"currency":event.get("currency")})
     info=connect()
