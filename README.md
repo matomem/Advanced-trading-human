@@ -6,14 +6,14 @@ Research and decision-support platform for **XAU/USD (gold)** and **USD/JPY**. T
 
 | Module | What is present | What still needs external setup |
 |---|---|---|
-| Decision engine | EMA/RSI/ATR, trend-pullback and breakout scoring, candle patterns, liquidity sweeps, risk/session/spread gates | Live feed adapter and integration tests |
+| Decision engine | EMA/RSI/ATR, trend-pullback and breakout scoring, candle patterns, liquidity sweeps, risk/session/spread gates | Live XM demo data is connected through the decision API; verify broker-specific data and sessions |
 | MT5 / XM | Authenticated FastAPI bridge for account, ticks, OHLC candles and guarded demo-first order route | Windows host, MT5 terminal, XM demo login/server and exact broker symbol names |
 | News | Finnhub economic-calendar adapter and high-impact event blackout in order route | FINNHUB_API_KEY, provider plan/coverage validation |
 | Sentiment | Finnhub forex headlines with transparent keyword heuristic | A licensed, validated sentiment source and robust NLP model |
 | Persistent memory | PostgreSQL decision journal, outcome records, searchable strategy observations and performance API | Database provisioning, backup, encryption and migrations |
 | ML | Point-in-time OHLC feature builder, XGBoost and optional PyTorch trainers, authenticated inference-only API | Your historical data, clean labels, walk-forward validation and model deployment |
 | Research | Next-bar illustrative OHLC backtest and parameter sweep with spread/commission/slippage inputs | Tick-quality fills, swaps, contract sizing, margin and walk-forward robustness |
-| Dashboard | Browser dashboard for account, quotes, calendar, sentiment, journal, stored memories and a manually confirmed demo-only order ticket | Host it locally/private network and configure CORS |
+| Dashboard | Browser dashboard for account, quotes, calendar, sentiment, journal, stored memories, live decision analysis and a manually confirmed demo-only order ticket | Host it locally/private network and configure CORS |
 | Execution safety | Kill switch, demo-account check, symbol allowlist, lot constraints, spread/stops checks, order preflight, daily limits, per-trade risk cap and news blackout | Real broker demo testing and independent security review |
 
 ## Quick start
@@ -52,7 +52,11 @@ python train_xgboost.py --csv data/features.csv --target target
 
 The optional PyTorch baseline uses `requirements-torch.txt`. The inference API in `serve.py` returns model probabilities only and has no order-execution capability. Run it from services/ml with `uvicorn serve:app --host 127.0.0.1 --port 8100` after setting ML_API_TOKEN and XGB_MODEL_PATH. Protect it with a separate ML_API_TOKEN and keep it on a private network.
 
-### 6. Checks
+### 6. Decision API
+
+Copy `services/decision-api/.env.example` to `services/decision-api/.env`, set a separate `DECISION_API_TOKEN` and the same `BRIDGE_API_TOKEN` as the MT5 bridge. Set the exact XM symbol names, then run `npm run build` and `node --env-file=services/decision-api/.env dist/services/decision-api/server.js`. The dashboard can call `/decision/XAUUSD` and `/decision/USDJPY`. This endpoint only analyzes and journals; it does not place orders.
+
+### 7. Checks
 
 ```bash
 npm install
