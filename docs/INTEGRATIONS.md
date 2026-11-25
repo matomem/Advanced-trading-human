@@ -21,3 +21,9 @@ backtest.py is an illustrative moving-average baseline. It shifts signals to nex
 
 ## Execution safety
 The bridge has a kill switch ON by default, demo-account verification, symbol allowlist, broker volume-step/min/max checks, spread and stop-distance limits, order_check preflight, open-position cap, daily loss/order limits and per-trade risk cap. News blackout protection fails closed by default: FINNHUB_API_KEY must be configured and the calendar request must succeed before an order can proceed; high-impact USD/JPY events within NEWS_BLACKOUT_MINUTES block orders. Set exact XM symbol names in ALLOWED_SYMBOLS after checking Market Watch. Do not enable live mode until extensive independent testing, broker rule verification and manual review. Live activation is not performed by this code change.
+
+
+## Decision API
+The TypeScript decision API is a separate Node process. It reads /account, /risk, /symbols/{symbol}/tick, /symbols/{symbol}/candles and /news from the MT5 bridge, evaluates the existing rules engine, and writes the resulting decision to /journal/decisions. It is analysis-only and never submits an order. Configure services/decision-api/.env.example, build with `npm run build`, then start `node --env-file=services/decision-api/.env dist/services/decision-api/server.js`. The dashboard needs the separate DECISION_API_TOKEN. Session classification currently uses approximate UTC hour windows; verify/adjust for daylight-saving changes and your broker's trading sessions.
+
+The /risk endpoint includes today's UTC realized deals plus current floating P/L. Positions without stop-loss values or uncomputable stop risk cause risk_unknown=true; the decision API treats that as 100% open risk to force a no-trade result. This is intentionally conservative, but the daily P/L convention should be reconciled with your broker's day boundary before production use.
