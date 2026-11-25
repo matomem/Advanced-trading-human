@@ -1,0 +1,27 @@
+name: Platform checks
+on:
+  pull_request:
+  push:
+    branches: [main, feature/human-trader-platform]
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pandas numpy scikit-learn xgboost joblib
+      - run: python -m compileall -q services
+      - run: cd services/ml && python -m unittest discover -v -p 'test_*.py'
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
