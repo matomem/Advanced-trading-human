@@ -57,9 +57,9 @@ async function runDecision(symbol){
  try{const r=await fetch(url+'/decision/'+symbol,{headers:{'Authorization':'Bearer '+el('decision-token').value}});
  const data=await r.json();if(!r.ok)throw new Error(JSON.stringify(data));
  const d=data.decision;el('decision-output').textContent=symbol+' · '+d.direction+' · '+d.setup+' · score '+d.score+
-   '\\nEntry: '+d.entry+' | SL: '+d.stopLoss+' | TP: '+d.takeProfit+
-   '\\nReasons: '+d.reasons.join(' ')+'\\nWarnings: '+d.warnings.join(' ')+
-   '\\nJournal ID: '+data.journalId+' | Execution: '+data.execution;
+   '\nEntry: '+d.entry+' | SL: '+d.stopLoss+' | TP: '+d.takeProfit+
+   '\nReasons: '+d.reasons.join(' ')+'\nWarnings: '+d.warnings.join(' ')+
+   '\nJournal ID: '+data.journalId+' | Execution: '+data.execution;
  }catch(e){el('decision-output').textContent='Analysis unavailable: '+e.message}
 }
 async function sendDemoOrder(){
