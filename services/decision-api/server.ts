@@ -7,6 +7,7 @@ const BRIDGE_URL=(process.env.MT5_BRIDGE_URL ?? "http://127.0.0.1:8000").replace
 const BRIDGE_TOKEN=process.env.BRIDGE_API_TOKEN ?? "";
 const API_TOKEN=process.env.DECISION_API_TOKEN ?? "";
 const PORT=Number(process.env.DECISION_API_PORT ?? 8200);
+const ALLOWED_ORIGINS=new Set((process.env.DECISION_CORS_ORIGINS??"http://localhost:5173").split(",").map(x=>x.trim()).filter(Boolean));
 type Quote={bid:number;ask:number};
 type Account={equity:number;balance:number};
 type Risk={daily_pnl:number;open_risk_pct:number;daily_loss_limit_pct:number;risk_unknown:boolean};
@@ -94,6 +95,9 @@ async function decision(instrument:Instrument){
 
 const server=createServer(async(req,res)=>{
   const url=new URL(req.url??"/","http://127.0.0.1");
+  const origin=req.headers.origin;
+  if(origin && ALLOWED_ORIGINS.has(origin)){res.setHeader("Access-Control-Allow-Origin",origin);res.setHeader("Vary","Origin");res.setHeader("Access-Control-Allow-Headers","Authorization,Content-Type");res.setHeader("Access-Control-Allow-Methods","GET,OPTIONS");}
+  if(req.method==="OPTIONS"){res.statusCode=204;return res.end();}
   if(req.method==="GET" && url.pathname==="/health") return send(res,200,{service:"human-trader-decision-api",executionEnabled:false});
   if(!authorized(req.headers.authorization,API_TOKEN)) return send(res,401,{error:"Missing or invalid decision API token"});
   if(req.method==="GET" && url.pathname.startsWith("/decision/")){
