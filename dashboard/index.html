@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Human Trader</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui;background:#0b1220;color:#e5edf8}body{margin:0;padding:24px;max-width:1100px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:22px}
+.card{background:#121e31;border:1px solid #263750;border-radius:14px;padding:18px}.muted{color:#9fb0c7}.value{font-size:24px;font-weight:700;margin-top:8px}
+input,button{background:#0b1220;color:#e5edf8;border:1px solid #344963;border-radius:8px;padding:10px}button{cursor:pointer}#status{margin-top:16px;color:#f6c66b}
+</style></head><body>
+<header><div><h1>Human Trader</h1><div class="muted">MT5 account monitor · USD/JPY · XAU/USD</div></div><button id="refresh">Refresh data</button></header>
+<div class="card" style="margin-top:18px"><label>Bridge URL <input id="url" value="http://127.0.0.1:8000" size="28"></label> <label>Bearer token <input id="token" type="password" placeholder="Bridge token"></label><p class="muted">Credentials stay in this tab; use localhost or a trusted private network only.</p></div>
+<div class="grid"><div class="card"><div class="muted">Bridge status</div><div class="value" id="health">Not connected</div></div>
+<div class="card"><div class="muted">Account / server</div><div class="value" id="account">—</div></div>
+<div class="card"><div class="muted">Balance / equity</div><div class="value" id="equity">—</div></div>
+<div class="card"><div class="muted">Trading mode</div><div class="value" id="mode">READ ONLY</div></div></div>
+<div class="card" style="margin-top:14px"><h3>Market quotes</h3><div id="quotes" class="muted">Connect bridge to load quotes.</div></div>
+<p id="status">No broker order controls are exposed in this dashboard. Execution is separately guarded in the bridge and defaults to kill-switch ON.</p>
+<script>
+const el=id=>document.getElementById(id), base=()=>el('url').value.replace(/\/$/,''), headers=()=>({'Authorization':'Bearer '+el('token').value});
+async function get(path){const r=await fetch(base()+path,{headers:headers()});if(!r.ok)throw new Error(await r.text());return r.json()}
+async function refresh(){el('health').textContent='Connecting…';try{const h=await fetch(base()+'/health').then(r=>r.json());el('health').textContent='Online';el('mode').textContent=h.mode.toUpperCase()+(h.kill_switch?' · LOCKED':'');
+const a=await get('/account');el('account').textContent=a.login+' · '+a.server;el('equity').textContent=a.currency+' '+Number(a.balance).toFixed(2)+' / '+Number(a.equity).toFixed(2);
+const syms=['XAUUSD','USDJPY'];const rows=await Promise.all(syms.map(async s=>{try{const q=await get('/symbols/'+s+'/tick');return s+': bid '+q.bid+' · ask '+q.ask}catch(e){return s+': unavailable (check broker symbol name)'}}));el('quotes').textContent=rows.join(' | ');el('status').textContent='Read-only account and quote view updated.'}
+catch(e){el('health').textContent='Offline';el('status').textContent='Connection error: '+e.message}}
+el('refresh').addEventListener('click',refresh);
+</script></body></html>
