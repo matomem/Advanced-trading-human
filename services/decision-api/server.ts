@@ -41,7 +41,7 @@ function sessionAt(date:Date):MarketSnapshot["session"]{
   return "OFF_HOURS";
 }
 function candles(rows:WireCandle[]):Candle[]{
-  return rows.slice().sort((a,b)=>a.time-b.time).map(x=>({time:x.time,open:x.open,high:x.high,low:x.low,close:x.close,volume:x.volume}));
+  return rows.slice().sort((a,b)=>a.time-b.time).map(x=>({time:x.time,open:x.open,high:x.high,low:x.low,close:x.close,...(x.volume===undefined?{}:{volume:x.volume})}));
 }
 async function checkNews(instrument:Instrument,now:number):Promise<{blocked:boolean;warning?:string}>{
   try{
