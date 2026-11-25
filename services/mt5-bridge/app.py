@@ -114,3 +114,78 @@ def order(req: OrderRequest, authorization: str | None = Header(default=None)):
             raise HTTPException(502,{"retcode":result.retcode,"comment":result.comment})
         return {"ticket":result.order,"deal":result.deal,"status":"accepted","mode":MODE}
     finally: mt5.shutdown()
+
+# Optional external data providers. Missing keys fail closed with HTTP 503.
+from providers import economic_news, market_sentiment, ProviderNotConfigured
+from datetime import timedelta
+@app.get("/news")
+async def news(from_ts: int, to_ts: int, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    if to_ts <= from_ts or to_ts-from_ts > 31*86400: raise HTTPException(400,"Invalid date range (maximum 31 days)")
+    try: return await economic_news(from_ts,to_ts)
+    except ProviderNotConfigured as e: raise HTTPException(503,str(e))
+    except Exception as e: raise HTTPException(502,f"Calendar provider error: {type(e).__name__}")
+
+@app.get("/sentiment/{symbol}")
+async def sentiment(symbol: str, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    try: return await market_sentiment(symbol)
+    except ProviderNotConfigured as e: raise HTTPException(503,str(e))
+    except Exception as e: raise HTTPException(502,f"Sentiment provider error: {type(e).__name__}")
+
+def db_connect():
+    import psycopg
+    dsn=os.getenv("DATABASE_URL")
+    if not dsn: raise HTTPException(503,"DATABASE_URL is not configured")
+    try: return psycopg.connect(dsn)
+    except Exception as e: raise HTTPException(503,f"Database unavailable: {type(e).__name__}")
+
+class DecisionInput(BaseModel):
+    symbol: str
+    timeframe: str
+    decision: dict
+    model_version: str = "rules-v1"
+    feature_snapshot: dict = {}
+
+@app.post("/journal/decisions")
+def save_decision(item: DecisionInput, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    import json
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO trade_decisions(symbol,timeframe,decision,model_version,feature_snapshot) VALUES(%s,%s,%s,%s,%s) RETURNING id",
+                        (item.symbol,item.timeframe,json.dumps(item.decision),item.model_version,json.dumps(item.feature_snapshot)))
+            decision_id=cur.fetchone()[0]
+    return {"id":decision_id,"stored":True}
+
+class OutcomeInput(BaseModel):
+    decision_id: int = Field(gt=0)
+    outcome: Literal["WIN","LOSS","BREAKEVEN"]
+    pnl: float
+    costs: float = 0
+    notes: str = ""
+
+@app.post("/journal/outcomes")
+def save_outcome(item: OutcomeInput, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO trade_outcomes(decision_id,closed_at,outcome,pnl,costs,notes) VALUES(%s,%s,%s,%s,%s,%s) RETURNING id",
+                        (item.decision_id,datetime.now(timezone.utc),item.outcome,item.pnl,item.costs,item.notes))
+            outcome_id=cur.fetchone()[0]
+    return {"id":outcome_id,"stored":True}
+
+@app.get("/journal")
+def journal(limit: int=100, authorization: str | None = Header(default=None)):
+    auth(authorization)
+    if not 1 <= limit <= 500: raise HTTPException(400,"limit must be 1..500")
+    with db_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT d.id,d.created_at,d.symbol,d.timeframe,d.decision,d.model_version,
+                           o.outcome,o.pnl,o.costs,o.closed_at FROM trade_decisions d
+                           LEFT JOIN LATERAL (SELECT * FROM trade_outcomes WHERE decision_id=d.id ORDER BY closed_at DESC LIMIT 1) o ON true
+                           ORDER BY d.created_at DESC LIMIT %s""",(limit,))
+            rows=cur.fetchall()
+    return [{"id":r[0],"created_at":r[1].isoformat(),"symbol":r[2],"timeframe":r[3],"decision":r[4],
+             "model_version":r[5],"outcome":r[6],"pnl":float(r[7]) if r[7] is not None else None,
+             "costs":float(r[8]) if r[8] is not None else None,"closed_at":r[9].isoformat() if r[9] else None} for r in rows]
