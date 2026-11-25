@@ -1,25 +1,40 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Human Trader</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Human Trader Dashboard</title>
 <style>
-:root{color-scheme:dark;font:15px system-ui;background:#0b1220;color:#e5edf8}body{margin:0;padding:24px;max-width:1100px;margin:auto}
-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:22px}
-.card{background:#121e31;border:1px solid #263750;border-radius:14px;padding:18px}.muted{color:#9fb0c7}.value{font-size:24px;font-weight:700;margin-top:8px}
-input,button{background:#0b1220;color:#e5edf8;border:1px solid #344963;border-radius:8px;padding:10px}button{cursor:pointer}#status{margin-top:16px;color:#f6c66b}
+:root{color-scheme:dark;font:15px system-ui;background:#0b1220;color:#e5edf8}*{box-sizing:border-box}body{margin:0;padding:22px;max-width:1250px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:18px}
+.card{background:#121e31;border:1px solid #263750;border-radius:14px;padding:17px;margin-top:14px}.muted{color:#9fb0c7}.value{font-size:22px;font-weight:700;margin-top:8px}
+input,button,select{background:#0b1220;color:#e5edf8;border:1px solid #344963;border-radius:8px;padding:10px;max-width:100%}button{cursor:pointer}button:hover{border-color:#91b4dc}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:500px}td,th{text-align:left;padding:9px;border-bottom:1px solid #263750;font-size:13px}#status{margin-top:14px;color:#f6c66b;white-space:pre-wrap}
 </style></head><body>
-<header><div><h1>Human Trader</h1><div class="muted">MT5 account monitor · USD/JPY · XAU/USD</div></div><button id="refresh">Refresh data</button></header>
-<div class="card" style="margin-top:18px"><label>Bridge URL <input id="url" value="http://127.0.0.1:8000" size="28"></label> <label>Bearer token <input id="token" type="password" placeholder="Bridge token"></label><p class="muted">Credentials stay in this tab; use localhost or a trusted private network only.</p></div>
-<div class="grid"><div class="card"><div class="muted">Bridge status</div><div class="value" id="health">Not connected</div></div>
+<header><div><h1>Human Trader</h1><div class="muted">MT5 · XM Global · XAU/USD · USD/JPY</div></div><button id="refresh">Refresh all data</button></header>
+<div class="card"><div class="row"><label>Bridge URL <input id="url" value="http://127.0.0.1:8000" size="27"></label><label>Bridge token <input id="token" type="password" placeholder="Bearer token"></label></div><p class="muted">The token is held only in this page's memory. Serve this dashboard from localhost or a trusted private network; never expose the bridge publicly.</p></div>
+<div class="grid">
+<div class="card"><div class="muted">Bridge</div><div class="value" id="health">Not connected</div></div>
 <div class="card"><div class="muted">Account / server</div><div class="value" id="account">—</div></div>
 <div class="card"><div class="muted">Balance / equity</div><div class="value" id="equity">—</div></div>
-<div class="card"><div class="muted">Trading mode</div><div class="value" id="mode">READ ONLY</div></div></div>
-<div class="card" style="margin-top:14px"><h3>Market quotes</h3><div id="quotes" class="muted">Connect bridge to load quotes.</div></div>
-<p id="status">No broker order controls are exposed in this dashboard. Execution is separately guarded in the bridge and defaults to kill-switch ON.</p>
+<div class="card"><div class="muted">Mode / kill switch</div><div class="value" id="mode">DEMO · LOCKED</div></div>
+</div>
+<div class="card"><h3>Live market quotes</h3><div id="quotes" class="muted">Not connected</div></div>
+<div class="grid">
+<div class="card"><h3>Performance journal</h3><div class="value" id="performance">—</div><div id="performance-detail" class="muted">No data loaded</div></div>
+<div class="card"><h3>Calendar provider</h3><div class="value" id="calendar">—</div><div class="muted">Provider availability and event coverage must be checked for your API plan.</div></div>
+<div class="card"><h3>Headline sentiment</h3><div id="sentiment" class="muted">Not loaded</div></div>
+</div>
+<div class="card"><h3>Economic calendar (next 7 days)</h3><div class="scroll"><table><thead><tr><th>Time</th><th>Currency</th><th>Event</th><th>Impact</th><th>Actual / Forecast</th></tr></thead><tbody id="events"><tr><td colspan="5">Connect to load events.</td></tr></tbody></table></div></div>
+<div class="card"><h3>Recent decisions and outcomes</h3><div class="scroll"><table><thead><tr><th>Created</th><th>Symbol</th><th>Timeframe</th><th>Model</th><th>Outcome</th><th>Net P/L</th></tr></thead><tbody id="journal"><tr><td colspan="6">Connect to load journal.</td></tr></tbody></table></div></div>
+<div class="card"><h3>Strategy memory</h3><div class="row"><input id="memory-query" placeholder="Search stored observations"><button id="search-memory">Search</button></div><div id="memories" class="muted" style="margin-top:12px">No memory loaded.</div></div>
+<p id="status">Read-only dashboard. It does not place or modify orders. The execution endpoint is separately protected and defaults to kill-switch ON.</p>
 <script>
 const el=id=>document.getElementById(id), base=()=>el('url').value.replace(/\/$/,''), headers=()=>({'Authorization':'Bearer '+el('token').value});
 async function get(path){const r=await fetch(base()+path,{headers:headers()});if(!r.ok)throw new Error(await r.text());return r.json()}
-async function refresh(){el('health').textContent='Connecting…';try{const h=await fetch(base()+'/health').then(r=>r.json());el('health').textContent='Online';el('mode').textContent=h.mode.toUpperCase()+(h.kill_switch?' · LOCKED':'');
-const a=await get('/account');el('account').textContent=a.login+' · '+a.server;el('equity').textContent=a.currency+' '+Number(a.balance).toFixed(2)+' / '+Number(a.equity).toFixed(2);
-const syms=['XAUUSD','USDJPY'];const rows=await Promise.all(syms.map(async s=>{try{const q=await get('/symbols/'+s+'/tick');return s+': bid '+q.bid+' · ask '+q.ask}catch(e){return s+': unavailable (check broker symbol name)'}}));el('quotes').textContent=rows.join(' | ');el('status').textContent='Read-only account and quote view updated.'}
-catch(e){el('health').textContent='Offline';el('status').textContent='Connection error: '+e.message}}
-el('refresh').addEventListener('click',refresh);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function loadQuotes(){const syms=['XAUUSD','USDJPY'];const rows=await Promise.all(syms.map(async s=>{try{const q=await get('/symbols/'+s+'/tick');return s+' · Bid '+q.bid+' · Ask '+q.ask}catch(e){return s+' · unavailable (check XM symbol suffix)'}}));el('quotes').textContent=rows.join(' | ')}
+async function loadPerformance(){try{const p=await get('/performance');el('performance').textContent=p.closed_trades+' closed trades';el('performance-detail').textContent='Win rate '+(p.win_rate*100).toFixed(1)+'% · Net P/L after costs '+p.net_pnl_after_costs.toFixed(2)}catch(e){el('performance').textContent='Unavailable';el('performance-detail').textContent=e.message}}
+async function loadNews(){const now=Math.floor(Date.now()/1000);try{const h=await get('/calendar/health');el('calendar').textContent=h.configured?'Configured':'API key missing';const data=await get('/news?from_ts='+now+'&to_ts='+(now+7*86400));el('events').innerHTML=data.length?data.map(x=>'<tr><td>'+esc(x.scheduledAt)+'</td><td>'+esc(x.currency)+'</td><td>'+esc(x.title)+'</td><td>'+esc(x.impact)+'</td><td>'+esc(x.actual)+' / '+esc(x.forecast)+'</td></tr>').join(''):'<tr><td colspan="5">No events returned by provider.</td></tr>'}catch(e){el('calendar').textContent='Unavailable';el('events').innerHTML='<tr><td colspan="5">'+esc(e.message)+'</td></tr>'}
+const scores=await Promise.all(['XAUUSD','USDJPY'].map(async s=>{try{const x=await get('/sentiment/'+s);return s+': '+Number(x.score).toFixed(2)+' ('+x.articleCount+' headlines; '+x.method+')'}catch(e){return s+': unavailable'}}));el('sentiment').textContent=scores.join(' · ')}
+async function loadJournal(){try{const rows=await get('/journal?limit=30');el('journal').innerHTML=rows.length?rows.map(x=>'<tr><td>'+esc(x.created_at)+'</td><td>'+esc(x.symbol)+'</td><td>'+esc(x.timeframe)+'</td><td>'+esc(x.model_version)+'</td><td>'+esc(x.outcome||'OPEN / UNLABELLED')+'</td><td>'+esc(x.pnl===null?'—':(x.pnl-(x.costs||0)).toFixed(2))+'</td></tr>').join(''):'<tr><td colspan="6">No decisions recorded yet.</td></tr>'}catch(e){el('journal').innerHTML='<tr><td colspan="6">'+esc(e.message)+'</td></tr>'}}
+async function loadMemory(){try{const q=encodeURIComponent(el('memory-query').value.trim());const rows=await get('/memory?limit=30'+(q?'&q='+q:''));el('memories').innerHTML=rows.length?rows.map(x=>'<p><b>'+esc(x.symbol)+' '+esc(x.timeframe)+' · '+esc(x.status)+'</b><br>'+esc(x.observation)+'<br><small class="muted">Confidence '+Number(x.confidence).toFixed(2)+' · '+esc((x.tags||[]).join(', '))+'</small></p>').join(''):'No matching memories.'}catch(e){el('memories').textContent=e.message}}
+async function refresh(){el('health').textContent='Connecting…';try{const h=await fetch(base()+'/health').then(r=>r.json());el('health').textContent='Online';el('mode').textContent=h.mode.toUpperCase()+(h.kill_switch?' · LOCKED':'');const a=await get('/account');el('account').textContent=a.login+' · '+a.server;el('equity').textContent=a.currency+' '+Number(a.balance).toFixed(2)+' / '+Number(a.equity).toFixed(2);await Promise.all([loadQuotes(),loadPerformance(),loadNews(),loadJournal(),loadMemory()]);el('status').textContent='Dashboard refreshed. No orders were sent.'}catch(e){el('health').textContent='Offline';el('status').textContent='Connection error: '+e.message}}
+el('refresh').addEventListener('click',refresh);el('search-memory').addEventListener('click',loadMemory);
 </script></body></html>
