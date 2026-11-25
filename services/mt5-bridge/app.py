@@ -306,6 +306,7 @@ def calendar_health(authorization: str | None=Header(default=None)):
 def learn_from_outcomes(limit: int=1000, authorization: str | None=Header(default=None)):
     """Summarize observed closed trades into unverified memory notes; never changes model weights or places orders."""
     auth(authorization)
+    import json
     if not 20 <= limit <= 5000: raise HTTPException(400,"limit must be 20..5000")
     with db_connect() as conn:
         with conn.cursor() as cur:
