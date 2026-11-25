@@ -15,9 +15,13 @@ async def economic_news(from_ts: int, to_ts: int):
         r=await client.get("https://finnhub.io/api/v1/calendar/economic",params={"from":start,"to":end,"token":token})
         r.raise_for_status(); payload=r.json()
     events=[]
+    currency_map={"US":"USD","JP":"JPY","GB":"GBP","EU":"EUR","AU":"AUD","NZ":"NZD","CA":"CAD","CH":"CHF"}
+    impact_map={"3":"HIGH","2":"MEDIUM","1":"LOW","HIGH":"HIGH","MEDIUM":"MEDIUM","LOW":"LOW"}
     for e in payload.get("economicCalendar",[]):
-        events.append({"currency":e.get("country",""),"title":e.get("event",""),
-          "impact":str(e.get("impact","")).upper(),"scheduledAt":e.get("time"),
+        country=str(e.get("country","")).upper()
+        raw_impact=str(e.get("impact","")).upper()
+        events.append({"currency":currency_map.get(country,country),"title":e.get("event",""),
+          "impact":impact_map.get(raw_impact,raw_impact),"scheduledAt":e.get("time"),
           "actual":e.get("actual"),"forecast":e.get("estimate"),"previous":e.get("prev")})
     return events
 
