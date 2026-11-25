@@ -24,7 +24,7 @@ Research and decision-support platform for **XAU/USD (gold)** and **USD/JPY**. T
 2. Confirm the exact broker server and symbol names in Market Watch (XM may use suffixes such as GOLD or XAUUSD.a).
 3. From `services/mt5-bridge`, install dependencies and copy `.env.example` to a local `.env`.
 4. Set MT5 credentials locally, generate a long random BRIDGE_API_TOKEN, set `TRADING_MODE=demo`, keep `KILL_SWITCH=true`, and set ALLOWED_SYMBOLS to exact broker symbols.
-5. Run `uvicorn app:app --host 127.0.0.1 --port 8000` from that directory.
+5. Run `uvicorn app:app --host 127.0.0.1 --port 8000 --env-file .env` from that directory.
 
 The MetaTrader5 Python package requires the Windows terminal environment; it cannot run inside the MT5 phone app. Do not expose this service directly to the public internet.
 
@@ -38,7 +38,7 @@ Set FINNHUB_API_KEY in the bridge environment. News blackout protection is requi
 
 ### 4. Dashboard
 
-Serve the `dashboard` folder from localhost (for example, `python -m http.server 5173` from that folder), set CORS_ORIGINS accordingly, then open the local dashboard URL. Enter the bridge token in the page. It is held in page memory and not stored in localStorage.
+Serve the `dashboard` folder from localhost (for example, `python -m http.server 5173` from that folder), set CORS_ORIGINS accordingly, then open the local dashboard URL. Enter the bridge token and separate decision API token in the page. Configure DECISION_CORS_ORIGINS to allow the dashboard origin. Tokens are held in page memory and not stored in localStorage.
 
 ### 5. ML feature generation, training and inference
 
@@ -70,7 +70,7 @@ cd services/ml && python -m unittest discover -v -p 'test_*.py'
 
 - No credentials or API keys are committed. Do not paste them into GitHub files or chat.
 - The MT5 bridge is a Windows-hosted companion service, not a mobile MT5 plugin.
-- The decision engine is not yet wired end-to-end to the live MT5 feed and ML inference service. The dashboard has a manual demo-only order ticket; it is not a finished multi-user production terminal and does not support automatic/live orders.
+- The TypeScript decision API is wired to MT5 quotes, candles, account risk and news blackout checks, and journals its decisions. ML inference remains a separate research service and is not fused into the rule score. The dashboard has a manual demo-only order ticket; it is not a finished multi-user production terminal and does not support automatic/live orders.
 - The news and sentiment adapters depend on provider access and require validation. The sentiment score is a keyword heuristic, not institutional-grade analysis.
 - ML training scripts do not make a model profitable. Use point-in-time features, walk-forward evaluation, realistic costs and out-of-sample demo testing.
 - Backtesting is an illustrative baseline, not a broker-accurate simulator.
