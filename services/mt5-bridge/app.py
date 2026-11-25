@@ -103,11 +103,25 @@ def order(req: OrderRequest, authorization: str | None = Header(default=None)):
         buy=req.side=="BUY"; price=tick.ask if buy else tick.bid
         if (buy and not req.stop_loss < price < req.take_profit) or (not buy and not req.take_profit < price < req.stop_loss):
             raise HTTPException(400,"Invalid stop-loss/take-profit direction")
+        # Broker-side pre-trade controls: realized daily loss, daily order count and stop-risk cap.
+        now=datetime.now(timezone.utc); day_start=now.replace(hour=0,minute=0,second=0,microsecond=0)
+        deals=mt5.history_deals_get(day_start,now) or []
+        daily_pnl=sum(float(d.profit+d.swap+d.commission) for d in deals)
+        max_daily_pct=float(os.getenv("MAX_DAILY_LOSS_PCT","1.0"))
+        if daily_pnl <= -(float(info.balance)*max_daily_pct/100):
+            raise HTTPException(423,"Daily loss limit reached; execution blocked")
+        entries=[d for d in deals if getattr(d,"entry",None)==mt5.DEAL_ENTRY_IN]
+        if len(entries) >= int(os.getenv("MAX_ORDERS_PER_DAY","5")):
+            raise HTTPException(423,"Daily order limit reached")
+        order_type=mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL
+        estimated_loss=mt5.order_calc_profit(order_type,req.symbol,req.volume,price,req.stop_loss)
+        risk_limit=float(info.equity)*float(os.getenv("MAX_RISK_PER_TRADE_PCT","0.25"))/100
+        if estimated_loss is None or abs(float(estimated_loss)) > risk_limit:
+            raise HTTPException(400,{"message":"Trade exceeds configured risk-per-trade cap","estimated_loss":estimated_loss,"risk_limit":risk_limit})
         request={"action":mt5.TRADE_ACTION_DEAL,"symbol":req.symbol,"volume":req.volume,
-                 "type":mt5.ORDER_TYPE_BUY if buy else mt5.ORDER_TYPE_SELL,"price":price,
-                 "sl":req.stop_loss,"tp":req.take_profit,"deviation":20,"magic":26001,
-                 "comment":"HumanTrader guarded order","type_time":mt5.ORDER_TIME_GTC,
-                 "type_filling":spec.filling_mode}
+                 "type":order_type,"price":price,"sl":req.stop_loss,"tp":req.take_profit,
+                 "deviation":20,"magic":26001,"comment":"HumanTrader guarded order",
+                 "type_time":mt5.ORDER_TIME_GTC,"type_filling":spec.filling_mode}
         result=mt5.order_send(request)
         if result is None: raise HTTPException(502,f"MT5 order_send failed: {mt5.last_error()}")
         if result.retcode != mt5.TRADE_RETCODE_DONE:
