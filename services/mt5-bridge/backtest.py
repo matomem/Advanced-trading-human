@@ -26,8 +26,19 @@ def run_backtest(df, fast=10, slow=30, spread=0.0001, commission_per_unit=0.0, s
             "cost_assumptions":{"spread":spread,"slippage":slippage,"commission_per_unit":commission_per_unit},
             "warning":"Illustrative moving-average baseline only; add broker-specific contract sizing, swap, financing, margin, stop fills and walk-forward validation."}
 
+def optimize(df, fast_values=(5,10,15,20), slow_values=(25,30,40,50), spread=0.0001, commission_per_unit=0.0, slippage=0.00002):
+    """Small transparent parameter sweep; ranks by return penalized by drawdown."""
+    rows=[]
+    for fast in fast_values:
+        for slow in slow_values:
+            if fast >= slow: continue
+            result=run_backtest(df,fast,slow,spread,commission_per_unit,slippage)
+            rows.append({"fast":fast,"slow":slow,**result,
+                         "score":result["total_return"] + result["max_drawdown"]})
+    return sorted(rows,key=lambda x:x["score"],reverse=True)
+
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--csv",required=True); p.add_argument("--fast",type=int,default=10); p.add_argument("--slow",type=int,default=30)
-    p.add_argument("--spread",type=float,default=0.0001); p.add_argument("--commission",type=float,default=0); p.add_argument("--slippage",type=float,default=0.00002)
-    a=p.parse_args(); print(json.dumps(run_backtest(pd.read_csv(a.csv),a.fast,a.slow,a.spread,a.commission,a.slippage),indent=2))
+    p.add_argument("--spread",type=float,default=0.0001); p.add_argument("--commission",type=float,default=0); p.add_argument("--slippage",type=float,default=0.00002); p.add_argument("--optimize",action="store_true")
+    a=p.parse_args(); df=pd.read_csv(a.csv); result=optimize(df,spread=a.spread,commission_per_unit=a.commission,slippage=a.slippage) if a.optimize else run_backtest(df,a.fast,a.slow,a.spread,a.commission,a.slippage); print(json.dumps(result,indent=2))
 if __name__=="__main__": main()
