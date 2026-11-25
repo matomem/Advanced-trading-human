@@ -1,56 +1,76 @@
 # Advanced Trading Human
 
-Research and decision-support engine for **USD/JPY intraday trading** and **XAU/USD gold scalping**.
+Research and decision-support platform for **XAU/USD (gold)** and **USD/JPY**. The project contains a TypeScript decision engine plus separate Python integration services.
 
-## Implemented
-- Closed OHLC analysis on 1m, 5m, 15m and 1h candles.
-- EMA, RSI, ATR, momentum and recent swing levels.
-- Trend-pullback and breakout scoring with explicit reasons.
-- Basic engulfing/pin-bar recognition and liquidity-sweep detection.
-- Symbol-specific spread/volatility/session filters and risk-based sizing.
-- Daily loss, aggregate open-risk and news-blackout rejection gates.
-- Typed adapter contracts for broker market data, economic calendars and sentiment.
-- Trade journal interface, in-memory development implementation and performance summaries.
-- TypeScript and unit-test CI workflow.
+## Platform modules
 
-## Important status and safety boundary
-This is **not yet a live trading bot**. It does not currently connect to MetaTrader 5, XM Global, a market-data feed, an economic-calendar provider or a sentiment provider. Adapter contracts define integration points; they do not fetch real data. The journal currently stores data in memory and loses it when the process stops. There is no live order execution, web dashboard, trained AI model or persistent AI memory.
+| Module | What is present | What still needs external setup |
+|---|---|---|
+| Decision engine | EMA/RSI/ATR, trend-pullback and breakout scoring, candle patterns, liquidity sweeps, risk/session/spread gates | Live feed adapter and integration tests |
+| MT5 / XM | Authenticated FastAPI bridge for account, ticks, OHLC candles and guarded demo-first order route | Windows host, MT5 terminal, XM demo login/server and exact broker symbol names |
+| News | Finnhub economic-calendar adapter and high-impact event blackout in order route | FINNHUB_API_KEY, provider plan/coverage validation |
+| Sentiment | Finnhub forex headlines with transparent keyword heuristic | A licensed, validated sentiment source and robust NLP model |
+| Persistent memory | PostgreSQL decision journal, outcome records, searchable strategy observations and performance API | Database provisioning, backup, encryption and migrations |
+| ML | Point-in-time OHLC feature builder, XGBoost and optional PyTorch trainers, authenticated inference-only API | Your historical data, clean labels, walk-forward validation and model deployment |
+| Research | Next-bar illustrative OHLC backtest and parameter sweep with spread/commission/slippage inputs | Tick-quality fills, swaps, contract sizing, margin and walk-forward robustness |
+| Dashboard | Browser dashboard for account, quotes, calendar, sentiment, journal and stored memories | Host it locally/private network and configure CORS |
+| Execution safety | Kill switch, demo-account check, symbol allowlist, lot constraints, spread/stops checks, order preflight, daily limits, per-trade risk cap and news blackout | Real broker demo testing and independent security review |
 
-No strategy can guarantee profits. Validate with historical data and demo/paper trading before considering live use. Never commit API keys, broker passwords, account identifiers or tokens.
+## Quick start
 
-## Next integration stages
-1. Build a secured MT5 companion service on a machine running the MT5 terminal; expose authenticated market-data endpoints to a backend, not browser code.
-2. Add historical data ingestion and walk-forward backtesting including spread, commission, swaps and slippage.
-3. Connect a trusted economic-calendar provider and documented sentiment sources; retain timestamps and source provenance.
-4. Replace the in-memory journal with encrypted durable storage and add model evaluation/versioning before adaptive strategies are used.
-5. Add a dashboard, monitoring, alerts, kill switch and demo-only execution adapter. Live execution must remain separately gated and require explicit operator enablement.
+### 1. MT5 bridge (Windows host with desktop terminal)
 
-## Development
-Requires Node.js 20+.
+1. Install the official MT5 desktop terminal and sign in to an **XM demo account**.
+2. Confirm the exact broker server and symbol names in Market Watch (XM may use suffixes such as GOLD or XAUUSD.a).
+3. From `services/mt5-bridge`, install dependencies and copy `.env.example` to a local `.env`.
+4. Set MT5 credentials locally, generate a long random BRIDGE_API_TOKEN, set `TRADING_MODE=demo`, keep `KILL_SWITCH=true`, and set ALLOWED_SYMBOLS to exact broker symbols.
+5. Run `uvicorn app:app --host 127.0.0.1 --port 8000` from that directory.
+
+The MetaTrader5 Python package requires the Windows terminal environment; it cannot run inside the MT5 phone app. Do not expose this service directly to the public internet.
+
+### 2. PostgreSQL journal and memory
+
+Set POSTGRES_PASSWORD, then run `docker compose up -d db`. The initial database mounts schema.sql and memory.sql. If your database volume already existed before memory.sql was added, apply that file manually with psql.
+
+### 3. News protection
+
+Set FINNHUB_API_KEY in the bridge environment. News blackout protection is required by default for order requests; if the provider is not configured or cannot be reached, order execution is refused. Confirm that the provider plan returns the events and timestamps you need.
+
+### 4. Dashboard
+
+Serve the `dashboard` folder from localhost (for example, `python -m http.server 5173` from that folder), set CORS_ORIGINS accordingly, then open the local dashboard URL. Enter the bridge token in the page. It is held in page memory and not stored in localStorage.
+
+### 5. ML feature generation, training and inference
+
+Export historical OHLC bars to CSV with columns `time,open,high,low,close` and optional `volume`. From `services/ml`:
+
+```bash
+pip install -r requirements.txt
+python features.py --csv data/xauusd_m5.csv --out data/features.csv --horizon 5
+python train_xgboost.py --csv data/features.csv --target target
+```
+
+The optional PyTorch baseline uses `requirements-torch.txt`. The inference API in `serve.py` returns model probabilities only and has no order-execution capability. Protect it with a separate ML_API_TOKEN and keep it on a private network.
+
+### 6. Checks
 
 ```bash
 npm install
 npm run typecheck
 npm test
+python -m compileall -q services
+cd services/ml && python -m unittest discover -v -p 'test_*.py'
 ```
 
-## Input contract
-Feed normalized candles (oldest first) for each timeframe, current bid/ask, account equity, current daily P&L and a news-blackout flag from a trusted calendar source. Candle timestamps are UTC milliseconds. The decision engine does not fetch market data itself.
+## Safety and current limitations
 
+- No credentials or API keys are committed. Do not paste them into GitHub files or chat.
+- The MT5 bridge is a Windows-hosted companion service, not a mobile MT5 plugin.
+- The decision engine is not yet wired end-to-end to the live MT5 feed and ML inference service. The dashboard is monitoring/research UI, not a finished multi-user trading terminal.
+- The news and sentiment adapters depend on provider access and require validation. The sentiment score is a keyword heuristic, not institutional-grade analysis.
+- ML training scripts do not make a model profitable. Use point-in-time features, walk-forward evaluation, realistic costs and out-of-sample demo testing.
+- Backtesting is an illustrative baseline, not a broker-accurate simulator.
+- The order route defaults to demo mode and kill switch ON. Live mode has additional explicit gates but is not enabled or certified by this repository change. Do not use live funds until all integrations, controls, monitoring and independent review are complete.
+- No strategy guarantees profits. This software is for research and technical development, not a promise of returns.
 
-## Platform integration foundation
-
-A separate platform layer now lives alongside the TypeScript decision engine:
-
-- `services/mt5-bridge`: authenticated FastAPI bridge for MT5 account, quotes and OHLC data; optional Finnhub economic calendar/headline sentiment; PostgreSQL-backed decision/outcome journal endpoints; demo-first order route with kill switch, account-mode check, daily loss/order limits and per-trade stop-risk cap.
-- `services/ml`: chronological XGBoost training baseline with saved feature schema. An optional PyTorch MLP baseline is included separately; compare it against XGBoost and simple baselines before any deployment.
-- `services/mt5-bridge/backtest.py`: next-bar moving-average baseline, explicit spread/commission/slippage assumptions and parameter sweep.
-- `dashboard/index.html`: read-only browser monitor for bridge status, account and quotes.
-- `services/mt5-bridge/schema.sql`: PostgreSQL journal schema.
-- `docs/INTEGRATIONS.md`: XM/MT5 setup and safety instructions.
-
-### What still requires your environment
-
-This repository does not contain broker credentials, Finnhub keys or a running MT5 terminal. The MT5 Python package runs on a Windows host with the terminal installed; the bridge cannot run inside a phone MT5 app. Confirm the exact XM server and symbol names in Market Watch. The optional Finnhub calendar/news endpoints require a valid API key and provider-plan coverage. Dashboard is a local read-only starter, not a hosted multi-user production app.
-
-The order endpoint is not production-certified. It defaults to `TRADING_MODE=demo` and `KILL_SWITCH=true`; live mode requires multiple separate environment confirmations and a per-order confirmation. Keep live trading disabled until demo tests, independent code review, broker rule checks and monitoring are complete. The backtest/optimizer is a research baseline, not evidence of profitability.
+See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for setup and operating details.
