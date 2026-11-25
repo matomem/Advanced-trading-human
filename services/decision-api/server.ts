@@ -7,6 +7,7 @@ const BRIDGE_URL=(process.env.MT5_BRIDGE_URL ?? "http://127.0.0.1:8000").replace
 const BRIDGE_TOKEN=process.env.BRIDGE_API_TOKEN ?? "";
 const API_TOKEN=process.env.DECISION_API_TOKEN ?? "";
 const PORT=Number(process.env.DECISION_API_PORT ?? 8200);
+const NEWS_WINDOW_MINUTES=Number(process.env.NEWS_BLACKOUT_MINUTES ?? 30);
 const ALLOWED_ORIGINS=new Set((process.env.DECISION_CORS_ORIGINS??"http://localhost:5173").split(",").map(x=>x.trim()).filter(Boolean));
 type Quote={bid:number;ask:number};
 type Account={equity:number;balance:number};
@@ -46,14 +47,17 @@ function candles(rows:WireCandle[]):Candle[]{
 }
 async function checkNews(instrument:Instrument,now:number):Promise<{blocked:boolean;warning?:string}>{
   try{
-    const from=Math.floor(now/1000)-30*60, to=Math.floor(now/1000)+30*60;
+    const windowMs=NEWS_WINDOW_MINUTES*60*1000;
+    const from=Math.floor(now/1000)-NEWS_WINDOW_MINUTES*60, to=Math.floor(now/1000)+NEWS_WINDOW_MINUTES*60;
     const events=await bridgeGet<Event[]>("/news?from_ts="+from+"&to_ts="+to);
     const currencies=instrument==="USDJPY"?new Set(["USD","JPY"]):new Set(["USD"]);
     for(const event of events){
       if(event.impact!=="HIGH" || !currencies.has(event.currency)) continue;
-      const ts=Date.parse(event.scheduledAt);
+      const raw=String(event.scheduledAt??"");
+      const normalized=/([zZ]|[+-]\\d{2}:?\\d{2})$/.test(raw)?raw:raw.replace(" ","T")+"Z";
+      const ts=Date.parse(normalized);
       if(!Number.isFinite(ts)) return {blocked:true,warning:"A relevant high-impact event has an unreadable timestamp; analysis is blocked."};
-      if(Math.abs(ts-now)<=30*60*1000) return {blocked:true,warning:"High-impact event blackout: "+event.title};
+      if(Math.abs(ts-now)<=windowMs) return {blocked:true,warning:"High-impact event blackout: "+event.title};
     }
     return {blocked:false};
   }catch(e){
